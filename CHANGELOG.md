@@ -1,3 +1,7 @@
+## 0.0.4
+
+* Change docs
+
 ## 0.0.3
 
 * Add docs
