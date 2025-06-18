@@ -3,9 +3,9 @@ import 'dart:io';
 class AppCodeGenerator {
   final List<String> includePaths;
   final List<String> skipFiles;
-  final List<String> filePatterns;
   final bool needYaml;
   final String savedFile;
+  final bool copyToClipboard;
 
   const AppCodeGenerator({
     required this.includePaths,
@@ -17,48 +17,86 @@ class AppCodeGenerator {
       'app-prompt.dart',
       '/.',
     ],
-    this.filePatterns = const [],
     this.needYaml = true,
     this.savedFile = 'app-prompt.txt',
+    this.copyToClipboard = false,
   });
 
   factory AppCodeGenerator.fromJson(dynamic json) {
     return AppCodeGenerator(
       needYaml: json['needYaml'] ?? false,
       savedFile: json['savedFile'] ?? 'app-code.txt',
+      copyToClipboard: json['copyToClipboard'] ?? false,
       includePaths:
           ((json['includePaths'] ?? []) as List).map((e) => '$e').toList(),
       skipFiles: ((json['skipFiles'] ?? []) as List).map((e) => '$e').toList(),
-      filePatterns:
-          ((json['filePatterns'] ?? []) as List).map((e) => '$e').toList(),
     );
   }
 
-  /// Checks if file matches any of the patterns with SQL-like syntax
-  /// "%" - any sequence of characters
-  /// Examples: "%_page.dart", "home%", "%widget%.dart"
-  bool _matchesPattern(String filePath) {
-    if (filePatterns.isEmpty) return true;
-
-    final fileName = filePath.split('/').last;
-    for (final pattern in filePatterns) {
-      if (!pattern.contains('%')) {
-        if (fileName == pattern) return true;
-        continue;
+  /// Normalizes include paths - adds "/" at the end if it's a folder
+  List<String> _normalizeIncludePaths() {
+    return includePaths.map((path) {
+      // If path contains "." (indicates file), do nothing
+      if (path.contains('.')) {
+        return path;
       }
 
-      final regexPattern = '^${pattern.replaceAll('%', '.*')}\$';
-      final regExp = RegExp(regexPattern);
+      // If it's a folder and doesn't end with "/", add it
+      if (!path.endsWith('/')) {
+        return '$path/';
+      }
 
-      if (regExp.hasMatch(fileName)) return true;
-    }
-
-    return false;
+      return path;
+    }).toList();
   }
 
-  void generateAppCodeFile() {
+  /// Copies text to clipboard using platform-specific commands
+  Future<void> _copyToClipboard(String text) async {
+    try {
+      if (Platform.isWindows) {
+        // Windows - use clip command
+        final process = await Process.start('clip', []);
+        process.stdin.write(text);
+        await process.stdin.close();
+        await process.exitCode;
+      } else if (Platform.isMacOS) {
+        // macOS - use pbcopy command
+        final process = await Process.start('pbcopy', []);
+        process.stdin.write(text);
+        await process.stdin.close();
+        await process.exitCode;
+      } else if (Platform.isLinux) {
+        // Linux - try xclip first, then xsel as fallback
+        try {
+          final process =
+              await Process.start('xclip', ['-selection', 'clipboard']);
+          process.stdin.write(text);
+          await process.stdin.close();
+          await process.exitCode;
+        } catch (e) {
+          // Fallback to xsel if xclip is not available
+          final process =
+              await Process.start('xsel', ['--clipboard', '--input']);
+          process.stdin.write(text);
+          await process.stdin.close();
+          await process.exitCode;
+        }
+      }
+      print('✓ Content copied to clipboard');
+    } catch (e) {
+      print('⚠ Failed to copy to clipboard: $e');
+      print('  Make sure clipboard tools are installed:');
+      if (Platform.isLinux) {
+        print('  - Linux: sudo apt install xclip (or xsel)');
+      }
+    }
+  }
+
+  Future<void> generateAppCodeFile() async {
     final prompt = File(savedFile);
     final yaml = File('pubspec.yaml');
+    final normalizedPaths = _normalizeIncludePaths();
+
     final files = Directory('lib').listSync(recursive: true).where((e) {
       if (e is File) {
         // Skip generated files
@@ -70,16 +108,11 @@ class AppCodeGenerator {
           return false;
         }
 
-        // Check if file is in includePaths
-        final isInIncludePath = includePaths.any(
-          (path) => e.path.contains(path),
+        // Check if file is in include paths
+        final isInIncludePath = normalizedPaths.any(
+          (path) => e.path.startsWith(path),
         );
         if (!isInIncludePath) {
-          return false;
-        }
-
-        // Check if file matches any pattern
-        if (!_matchesPattern(e.path)) {
           return false;
         }
 
@@ -108,6 +141,16 @@ class AppCodeGenerator {
       sb.writeln();
     }
 
-    prompt.writeAsStringSync(sb.toString());
+    final content = sb.toString();
+
+    // Save to file only if savedFile is not empty
+    if (savedFile.isNotEmpty) {
+      prompt.writeAsStringSync(content);
+    }
+
+    // Copy to clipboard if requested
+    if (copyToClipboard) {
+      await _copyToClipboard(content);
+    }
   }
 }

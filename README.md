@@ -29,7 +29,8 @@ Create a `prompt_generator.yaml` file in your project root directory:
 
 ```yaml
 needYaml: true
-savedFile: "app-code.txt"
+copyToClipboard: false
+savedFile: "app-code.txt" # if empty, doesn't save
 skipFiles: [
   '.freezed.dart',
   '.g.dart',
@@ -38,9 +39,8 @@ skipFiles: [
   'app-prompt.dart',
   '/.',
 ]
-#filePatterns: ['%_page.dart'] # Optional: uncomment if you need to filter by patterns
 includePaths: [
-  'lib/presentation',
+  lib/presentation,
 ]
 ```
 
@@ -56,42 +56,40 @@ This will create the output file (default: `app-code.txt`) with the code from th
 
 ## Configuration Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `needYaml` | boolean | Whether to include YAML configuration in the output |
-| `savedFile` | string | Name of the output file |
-| `skipFiles` | list | File patterns to ignore |
-| `filePatterns` | list | Optional: Specific file patterns to include |
-| `includePaths` | list | Directories to scan for code |
+| Option            | Type    | Description                                         |
+|-------------------|---------|-----------------------------------------------------|
+| `needYaml`        | boolean | Whether to include YAML configuration in the output |
+| `copyToClipboard` | boolean | variable to copy clipboard                          |
+| `savedFile`       | string  | Name of the output file                             |
+| `skipFiles`       | list    | File patterns to ignore                             |
+| `includePaths`    | list    | Directories to scan for code                        |
 
 ### Example Configuration
 
 ```yaml
 # Basic configuration
 needYaml: true
-savedFile: "app-code.txt"
+copyToClipboard: false
+savedFile: "app-code.txt" # if empty, doesn't save
 skipFiles: [
   '.freezed.dart',
   '.g.dart',
 ]
 includePaths: [
-  'lib/presentation',
-  'lib/domain',
+  lib/presentation,
+  lib/domain,
 ]
 
 # With file patterns
 needYaml: true
-savedFile: "features-code.txt"
+copyToClipboard: false
+savedFile: "app-code.txt" # if empty, doesn't save
 skipFiles: [
   '.freezed.dart',
   '.g.dart',
 ]
-filePatterns: [
-  '%_page.dart',
-  '%_widget.dart',
-]
 includePaths: [
-  'lib/features',
+  lib/features,
 ]
 ```
 
