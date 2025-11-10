@@ -2,9 +2,7 @@
 
 [![pub package](https://img.shields.io/pub/v/prompt_generator.svg)](https://pub.dev/packages/prompt_generator)
 
-<br>
----
-**[English](https://github.com/abbos2101/prompt_generator/blob/main/README.md)** | **[O'zbekcha](https://github.com/abbos2101/prompt_generator/blob/main/README_UZ.md)**
+🌐 **[English](https://github.com/abbos2101/prompt_generator/blob/main/README.md)** | **[O'zbekcha](https://github.com/abbos2101/prompt_generator/blob/main/README_UZ.md)**
 
 **Jamoadan kontekst so'rashni bas qiling. Notanish kod bazasidan qo'rqishni to'xtating. AIga butun Flutter proyektingizni bir zumda tushuntiring.**
 

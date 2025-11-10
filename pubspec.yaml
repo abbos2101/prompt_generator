@@ -1,6 +1,6 @@
 name: prompt_generator
 description: Generate Project code for Claude, ChatGPT, Gemini, Grok and others AI
-version: 1.0.2
+version: 1.0.3
 repository: https://github.com/abbos2101/prompt_generator
 homepage: https://www.linkedin.com/in/abbos2101/
 topics: [ ai, generator, claude, chatgpt, grok ]
