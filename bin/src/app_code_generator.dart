@@ -1,5 +1,7 @@
 import 'dart:io';
 
+enum _SignatureType { none, function, method, getter, factory }
+
 class AppCodeGenerator {
   final List<String> includePaths;
   final List<String> skipFiles;
@@ -118,12 +120,25 @@ class AppCodeGenerator {
     final result = StringBuffer();
     final lines = content.split('\n');
 
-    int braceCount = 0;
-    bool inMethodBody = false;
-    String methodIndent = '';
-    bool isArrowFunction = false;
-
+    // Skip imports for compressed files
+    int startIndex = 0;
     for (int i = 0; i < lines.length; i++) {
+      final trimmed = lines[i].trim();
+      if (trimmed.startsWith('import ') ||
+          trimmed.startsWith('export ') ||
+          trimmed.startsWith('part ') ||
+          trimmed.isEmpty) {
+        continue;
+      }
+      startIndex = i;
+      break;
+    }
+
+    int braceCount = 0;
+    bool inBody = false;
+    String bodyIndent = '';
+
+    for (int i = startIndex; i < lines.length; i++) {
       final line = lines[i];
       final trimmed = line.trim();
 
@@ -131,56 +146,96 @@ class AppCodeGenerator {
       int openBraces = _countChar(line, '{');
       int closeBraces = _countChar(line, '}');
 
-      // If we're inside a method body, skip until closed
-      if (inMethodBody) {
+      // If we're inside a body, skip until closed
+      if (inBody) {
         braceCount += openBraces - closeBraces;
         if (braceCount <= 0) {
-          inMethodBody = false;
-          result.writeln('$methodIndent}');
+          inBody = false;
+          result.writeln('$bodyIndent}');
         }
         continue;
       }
 
-      // Detect method start
-      if (_isMethodSignature(trimmed)) {
+      // Check for function/method signature
+      final signatureType = _getSignatureType(trimmed, i > 0 ? lines[i - 1].trim() : '');
+
+      if (signatureType != _SignatureType.none) {
         // Arrow function (=>)
         if (line.contains('=>')) {
-          // Short arrow - keep as is
-          if (line.length <= 80 && (trimmed.endsWith(';') || trimmed.endsWith(','))) {
-            result.writeln(line);
-            continue;
-          }
-          // Long arrow - compress
           final arrowIndex = line.indexOf('=>');
           result.writeln('${line.substring(0, arrowIndex + 2)} /* impl */;');
-          // Skip continuation lines if any
-          while (i + 1 < lines.length && !lines[i].trimLeft().endsWith(';')) {
+          // Skip continuation lines
+          while (i + 1 < lines.length && !lines[i].trim().endsWith(';')) {
             i++;
           }
           continue;
         }
 
-        // Method with body {
+        // Body starts with {
         if (trimmed.endsWith('{')) {
-          methodIndent = _getIndent(line);
+          bodyIndent = _getIndent(line);
           result.writeln(line);
-          result.writeln('$methodIndent  /* impl */');
+          result.writeln('$bodyIndent  /* impl */');
           braceCount = 1;
-          inMethodBody = true;
+          inBody = true;
           continue;
         }
 
-        // Async method - next line might have {
+        // async/sync* - next line might have {
         if (trimmed.endsWith('async') || trimmed.endsWith('async*') || trimmed.endsWith('sync*')) {
           result.writeln(line);
-          // Check next line for {
           if (i + 1 < lines.length && lines[i + 1].trim() == '{') {
             i++;
-            methodIndent = _getIndent(lines[i]);
+            bodyIndent = _getIndent(lines[i]);
             result.writeln(lines[i]);
-            result.writeln('$methodIndent  /* impl */');
+            result.writeln('$bodyIndent  /* impl */');
             braceCount = 1;
-            inMethodBody = true;
+            inBody = true;
+          }
+          continue;
+        }
+
+        // Multi-line signature - look for { on next lines
+        if (trimmed.endsWith(',') || trimmed.endsWith('(')) {
+          result.writeln(line);
+          // Continue writing signature lines until we find { or =>
+          while (i + 1 < lines.length) {
+            i++;
+            final nextLine = lines[i];
+            final nextTrimmed = nextLine.trim();
+
+            if (nextLine.contains('=>')) {
+              final arrowIndex = nextLine.indexOf('=>');
+              result.writeln('${nextLine.substring(0, arrowIndex + 2)} /* impl */;');
+              while (i + 1 < lines.length && !lines[i].trim().endsWith(';')) {
+                i++;
+              }
+              break;
+            }
+
+            if (nextTrimmed.endsWith('{')) {
+              bodyIndent = _getIndent(nextLine);
+              result.writeln(nextLine);
+              result.writeln('$bodyIndent  /* impl */');
+              braceCount = 1;
+              inBody = true;
+              break;
+            }
+
+            if (nextTrimmed.endsWith('async') || nextTrimmed.endsWith('async*')) {
+              result.writeln(nextLine);
+              if (i + 1 < lines.length && lines[i + 1].trim() == '{') {
+                i++;
+                bodyIndent = _getIndent(lines[i]);
+                result.writeln(lines[i]);
+                result.writeln('$bodyIndent  /* impl */');
+                braceCount = 1;
+                inBody = true;
+              }
+              break;
+            }
+
+            result.writeln(nextLine);
           }
           continue;
         }
@@ -193,63 +248,88 @@ class AppCodeGenerator {
     return result.toString();
   }
 
-  /// Check if line is a method signature
-  bool _isMethodSignature(String trimmed) {
-    // Skip comments, imports, fields
+  _SignatureType _getSignatureType(String trimmed, String prevLine) {
+    // Skip comments
     if (trimmed.startsWith('//') ||
         trimmed.startsWith('/*') ||
-        trimmed.startsWith('*') ||
-        trimmed.startsWith('import ') ||
-        trimmed.startsWith('export ') ||
-        trimmed.startsWith('part ')) {
-      return false;
+        trimmed.startsWith('*')) {
+      return _SignatureType.none;
     }
 
-    // Skip class/mixin declarations
+    // Skip class/mixin/enum/extension declarations
     if (trimmed.startsWith('class ') ||
         trimmed.startsWith('abstract class ') ||
+        trimmed.startsWith('sealed class ') ||
+        trimmed.startsWith('final class ') ||
         trimmed.startsWith('mixin ') ||
         trimmed.startsWith('enum ') ||
         trimmed.startsWith('extension ')) {
-      return false;
+      return _SignatureType.none;
     }
 
-    // Skip constructors (ClassName() or ClassName.named())
-    if (RegExp(r'^\w+\s*\(').hasMatch(trimmed) && !trimmed.contains(' ')) {
-      return false;
-    }
-    if (RegExp(r'^\w+\.\w+\s*\(').hasMatch(trimmed)) {
-      return false;
+    // Skip imports/exports/parts
+    if (trimmed.startsWith('import ') ||
+        trimmed.startsWith('export ') ||
+        trimmed.startsWith('part ')) {
+      return _SignatureType.none;
     }
 
-    // Skip field declarations without ()
+    // Skip simple field declarations (no parentheses = not a function)
     if ((trimmed.startsWith('final ') ||
         trimmed.startsWith('late ') ||
-        trimmed.startsWith('static ') ||
-        trimmed.startsWith('const ')) &&
+        trimmed.startsWith('const ') ||
+        trimmed.startsWith('static const ') ||
+        trimmed.startsWith('static final ')) &&
         !trimmed.contains('(')) {
-      return false;
+      return _SignatureType.none;
     }
 
-    // Skip simple getters (one line)
-    if (trimmed.contains(' get ') && trimmed.contains('=>') && trimmed.endsWith(';')) {
-      return false;
+    // Skip annotations (but @override is handled separately)
+    if (trimmed.startsWith('@') && !trimmed.startsWith('@override')) {
+      return _SignatureType.none;
     }
 
-    // Method patterns
-    final hasReturnType = RegExp(
-      r'^(Future|void|String|int|double|bool|List|Map|Set|dynamic|Stream|Either|Option|Widget|State|\w+Model|\w+State)',
-    ).hasMatch(trimmed);
+    // @override - next meaningful line is a method
+    if (prevLine == '@override') {
+      return _SignatureType.method;
+    }
 
-    final hasMethodParens = trimmed.contains('(') &&
-        (trimmed.contains(') {') ||
-            trimmed.contains(') async') ||
-            trimmed.contains(') =>') ||
-            trimmed.contains(') sync'));
+    // Factory constructor: factory ClassName...
+    if (trimmed.startsWith('factory ')) {
+      return _SignatureType.factory;
+    }
 
-    final isOverride = trimmed.startsWith('@override');
+    // Getter: Type get name => or Type get name {
+    if (RegExp(r'\s+get\s+\w+').hasMatch(trimmed)) {
+      return _SignatureType.getter;
+    }
 
-    return hasReturnType && hasMethodParens || isOverride;
+    // Top-level or class function with return type
+    // Pattern: ReturnType<Generic>? functionName(... or Future<Type> name(
+    final funcPattern = RegExp(
+      r'^(static\s+)?(Future|Stream|void|dynamic|bool|int|double|num|String|List|Map|Set|Either|Option|Widget|Color|[A-Z]\w*)(<[^>]+>)?\??\s+\w+\s*\(',
+    );
+    if (funcPattern.hasMatch(trimmed)) {
+      return _SignatureType.function;
+    }
+
+    // Method after @override (current line)
+    if (trimmed.startsWith('@override')) {
+      return _SignatureType.none; // Will be handled on next line
+    }
+
+    // Constructor: ClassName( or ClassName.named( - but NOT with return type before
+    // Skip if it looks like: Type name( which is a function
+    if (RegExp(r'^\w+\s*\(').hasMatch(trimmed) && !trimmed.contains(' ')) {
+      // This is a constructor like ClassName() or _ClassName()
+      return _SignatureType.none; // Don't compress constructors
+    }
+    if (RegExp(r'^\w+\.\w+\s*\(').hasMatch(trimmed) && !RegExp(r'^\w+\s+\w+\.\w+').hasMatch(trimmed)) {
+      // Named constructor like ClassName.named()
+      return _SignatureType.none;
+    }
+
+    return _SignatureType.none;
   }
 
   /// Get indentation of a line
