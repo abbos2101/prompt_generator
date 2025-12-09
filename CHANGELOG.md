@@ -1,3 +1,9 @@
+## 1.1.1
+* Update Readme
+
+## 1.1.0
+* Add compress code to reduce token for using ai
+
 ## 1.0.3
 * Update Readme
 

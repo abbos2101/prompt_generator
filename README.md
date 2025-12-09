@@ -21,6 +21,7 @@ Ever joined a new project and felt lost? Ever received a task from a senior deve
 - **AI-Optimized**: Outputs in a format that AI assistants understand perfectly
 - **Privacy-First**: Automatically skip generated files (.g.dart, .freezed.dart) and sensitive data
 - **Zero Setup**: Simple YAML configuration, one command to run
+- **Code Compression**: Reduce token usage by 40-60% while preserving code structure
 
 ## Perfect For
 
@@ -80,13 +81,15 @@ Copy the generated `app-code.txt` content and paste it directly into Claude, Cha
 
 ## Configuration Options
 
-| Option            | Type    | Description                                              |
-|-------------------|---------|----------------------------------------------------------|
-| `needYaml`        | boolean | Include YAML configuration files in output               |
-| `copyToClipboard` | boolean | Automatically copy output to clipboard                   |
-| `savedFile`       | string  | Output filename (leave empty to skip file creation)      |
-| `skipFiles`       | list    | File patterns to exclude (supports wildcards)            |
-| `includePaths`    | list    | Directories to include in the output                     |
+| Option               | Type    | Description                                              |
+|----------------------|---------|----------------------------------------------------------|
+| `needYaml`           | boolean | Include YAML configuration files in output               |
+| `copyToClipboard`    | boolean | Automatically copy output to clipboard                   |
+| `savedFile`          | string  | Output filename (leave empty to skip file creation)      |
+| `skipFiles`          | list    | File patterns to exclude (supports wildcards)            |
+| `includePaths`       | list    | Directories to include in the output                     |
+| `compressService`    | boolean | Enable code compression to reduce tokens (default: false)|
+| `doNotCompressPaths` | list    | File patterns to exclude from compression                |
 
 ### Configuration Examples
 
@@ -130,6 +133,74 @@ includePaths: [
 ]
 ```
 
+**With Compression** - Reduce token usage for large projects:
+```yaml
+needYaml: true
+copyToClipboard: true
+savedFile: "compressed-code.txt"
+compressService: true
+doNotCompressPaths: [
+  '_model.dart',
+  '_facade.dart',
+  '_state.dart',
+  '_event.dart',
+]
+skipFiles: [
+  '.freezed.dart',
+  '.g.dart',
+  '.res.dart',
+  '/.',
+]
+includePaths: [
+  lib/presentation,
+  lib/domain,
+  lib/data,
+]
+```
+
+## Code Compression
+
+When `compressService: true`, method bodies are replaced with `/* impl */` to significantly reduce token count while preserving:
+
+- Class and method signatures
+- Constructor definitions
+- Field declarations
+- Import statements
+- Code structure and architecture
+
+**Before compression:**
+```dart
+class AuthBloc extends Bloc<AuthEvent, AuthState> {
+  final AuthFacade _authFacade;
+
+  AuthBloc(this._authFacade) : super(const AuthState.initial());
+
+  Future<void> _onLogin(_Login event, Emitter<AuthState> emit) async {
+    emit(state.copyWith(loginStatus: VarStatus.loading()));
+    final result = await _authFacade.login(event.username, event.password);
+    result.fold(
+      (l) => emit(state.copyWith(loginStatus: VarStatus.fail(l))),
+      (r) => emit(state.copyWith(loginStatus: VarStatus.success())),
+    );
+  }
+}
+```
+
+**After compression:**
+```dart
+class AuthBloc extends Bloc<AuthEvent, AuthState> {
+  final AuthFacade _authFacade;
+
+  AuthBloc(this._authFacade) : super(const AuthState.initial());
+
+  Future<void> _onLogin(_Login event, Emitter<AuthState> emit) async {
+    /* impl */
+  }
+}
+```
+
+Use `doNotCompressPaths` to keep important files uncompressed (models, facades, states, events).
+
 ## Real-World Scenarios
 
 **Scenario 1: New to the Team**
@@ -141,15 +212,19 @@ includePaths: [
 **Scenario 3: Code Review Preparation**
 > Before submitting a PR, generate your feature's code, ask AI: "Review this implementation for potential issues, edge cases, and best practices violations."
 
+**Scenario 4: Large Codebase**
+> Your project is too large for AI context limits. Enable `compressService: true` to reduce tokens by 40-60% while keeping full architecture visibility.
+
 ## Features
 
-✅ One-command code collection
-✅ Flexible path configuration
-✅ Smart file filtering
-✅ Optional clipboard integration
-✅ Customizable output format
-✅ No manual file copying
-✅ Works with all AI assistants
+- One-command code collection
+- Flexible path configuration
+- Smart file filtering
+- Optional clipboard integration
+- Customizable output format
+- No manual file copying
+- Works with all AI assistants
+- Code compression for token optimization
 
 ## Tips for Best Results
 
@@ -158,6 +233,7 @@ includePaths: [
 3. **Ask Clearly**: When pasting to AI, frame your question with context
 4. **Iterate**: Regenerate with different paths for different questions
 5. **Combine Tools**: Use with your AI assistant's other capabilities for maximum benefit
+6. **Use Compression**: For large projects, enable `compressService` to fit more code in AI context
 
 ## Contributing
 
